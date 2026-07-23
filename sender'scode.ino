@@ -1,88 +1,106 @@
-#include <ESP8266WiFi.h>
-#include <espnow.h>
+/*
+  ============================================================
+  SENSOR DIAGNOSTICS SKETCH
+  ============================================================
+  Purpose : Test DHT11, MQ2, Flame sensor, and GPS in isolation,
+            with NO WiFi / ESP-NOW / SoftwareSerial interrupt
+            competition, to determine whether sensor issues are
+            hardware/wiring/power related or caused by the
+            ESP-NOW radio stack.
+
+  How to use:
+  - Upload this sketch as-is (no changes needed).
+  - Open Serial Monitor at 115200 baud.
+  - Watch the readings for at least 1-2 minutes.
+  - If DHT11 fails HERE too, the problem is wiring/power, not code.
+  - If DHT11 works fine HERE, the problem is specifically caused
+    by ESP-NOW/GPS running at the same time, and we will need a
+    different strategy (e.g. reading DHT11 before enabling WiFi).
+  ============================================================
+*/
+
 #include <DHT.h>
-#include <TinyGPS++.h>
 #include <SoftwareSerial.h>
+#include <TinyGPS++.h>
 
-// MAC Address of the Receiver NodeMCU
-uint8_t receiverAddress[] = {0x50, 0x02, 0x91, 0xE1, 0x4A, 0x44};
+// ---------------- Pin Definitions (as wired) ----------------
+#define DHTPIN      D2
+#define DHTTYPE     DHT11
+#define MQ2_PIN     A0
+#define FLAME_PIN   D6
+#define GPS_RX_PIN  D1
+#define GPS_TX_PIN  D0
 
-// Pin Definitions
-#define DHTPIN D2
-#define DHTTYPE DHT11
 DHT dht(DHTPIN, DHTTYPE);
-
-const int mq2Pin = A0;
-const int flamePin = D6;
-
-// GPS Setup
-static const int RXPin = D1, TXPin = D0;
-static const uint32_t GPSBaud = 9600;
+SoftwareSerial gpsSerial(GPS_RX_PIN, GPS_TX_PIN);
 TinyGPSPlus gps;
-SoftwareSerial ss(RXPin, TXPin);
 
-// Structure to send data
-typedef struct struct_message {
-  float temp;
-  float hum;
-  int gasValue;
-  int flameState;
-  float latitude;
-  float longitude;
-} struct_message;
-
-struct_message sendData;
-
-// Callback when data is sent
-void OnDataSent(uint8_t *mac_addr, uint8_t sendStatus) {
-  Serial.print("Last Packet Send Status: ");
-  if (sendStatus == 0) {
-    Serial.println("Delivery Success");
-  } else {
-    Serial.println("Delivery Fail");
-  }
-}
+unsigned long lastReadTime = 0;
+const unsigned long readInterval = 2500; // DHT11 needs at least ~1-2s between reads
 
 void setup() {
   Serial.begin(115200);
-  ss.begin(GPSBaud);
+  delay(500);
+  Serial.println();
+  Serial.println("=== Sensor Diagnostics Starting ===");
+
   dht.begin();
+  pinMode(FLAME_PIN, INPUT);
+  gpsSerial.begin(9600);
 
-  pinMode(flamePin, INPUT);
-
-  WiFi.mode(WIFI_STA);
-
-  if (esp_now_init() != 0) {
-    Serial.println("Error initializing ESP-NOW");
-    return;
-  }
-
-  esp_now_set_self_role(ESP_NOW_ROLE_CONTROLLER);
-  esp_now_register_send_cb(OnDataSent);
-
-  esp_now_add_peer(receiverAddress, ESP_NOW_ROLE_SLAVE, 1, NULL, 0);
+  Serial.println("Setup complete. Reading sensors every 2.5 seconds...");
+  Serial.println();
 }
 
 void loop() {
-  sendData.temp = dht.readTemperature();
-  sendData.hum = dht.readHumidity();
-
-  sendData.gasValue = analogRead(mq2Pin);
-  sendData.flameState = digitalRead(flamePin);
-
-  while (ss.available() > 0) {
-    gps.encode(ss.read());
+  // Feed any available GPS bytes to the parser (non-blocking)
+  while (gpsSerial.available() > 0) {
+    gps.encode(gpsSerial.read());
   }
 
-  if (gps.location.isUpdated()) {
-    sendData.latitude = gps.location.lat();
-    sendData.longitude = gps.location.lng();
+  if (millis() - lastReadTime >= readInterval) {
+    lastReadTime = millis();
+    runDiagnostics();
+  }
+}
+
+void runDiagnostics() {
+  Serial.println("---------------------------------------------");
+
+  // ---- DHT11 ----
+  float h = dht.readHumidity();
+  float t = dht.readTemperature();
+  Serial.print("[DHT11]   ");
+  if (isnan(h) || isnan(t)) {
+    Serial.println("READ FAILED (NaN returned)");
   } else {
-    if (sendData.latitude == 0.0) sendData.latitude = 0.0;
-    if (sendData.longitude == 0.0) sendData.longitude = 0.0;
+    Serial.print("Temp: "); Serial.print(t); Serial.print(" C   ");
+    Serial.print("Humidity: "); Serial.print(h); Serial.println(" %");
   }
 
-  esp_now_send(receiverAddress, (uint8_t *) &sendData, sizeof(sendData));
+  // ---- MQ2 ----
+  int mq2Raw = analogRead(MQ2_PIN);
+  Serial.print("[MQ2]     Raw ADC value: "); Serial.println(mq2Raw);
 
-  delay(5000);
+  // ---- Flame Sensor ----
+  int flameRaw = digitalRead(FLAME_PIN);
+  Serial.print("[Flame]   Raw digital pin state: "); Serial.println(flameRaw);
+  Serial.println("          (Note which state this shows with NO flame present,");
+  Serial.println("           and adjust the sensitivity potentiometer if needed.)");
+
+  // ---- GPS ----
+  Serial.print("[GPS]     Characters processed: ");
+  Serial.print(gps.charsProcessed());
+  Serial.print("   Satellites: ");
+  Serial.print(gps.satellites.isValid() ? String(gps.satellites.value()) : "N/A");
+  Serial.print("   Fix: ");
+  if (gps.location.isValid()) {
+    Serial.print("YES  Lat: "); Serial.print(gps.location.lat(), 6);
+    Serial.print("  Lng: "); Serial.println(gps.location.lng(), 6);
+  } else {
+    Serial.println("NO");
+  }
+
+  Serial.println("---------------------------------------------");
+  Serial.println();
 }
