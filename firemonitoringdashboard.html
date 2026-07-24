@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Fire &amp; Gas Monitoring System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0A0D10;
+    --panel: #12171C;
+    --panel-border: #232B33;
+    --text: #E7ECEF;
+    --muted: #6E7A85;
+    --safe: #2FD673;
+    --warn: #FFB020;
+    --alarm: #FF3D3D;
+    --safe-glow: rgba(47, 214, 115, 0.35);
+    --warn-glow: rgba(255, 176, 32, 0.35);
+    --alarm-glow: rgba(255, 61, 61, 0.4);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    background-image:
+      radial-gradient(circle at 20% 0%, rgba(255,255,255,0.03), transparent 40%),
+      radial-gradient(circle at 80% 100%, rgba(255,255,255,0.02), transparent 40%);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+    padding: 28px 20px 60px;
+  }
+
+  .wrap { max-width: 1040px; margin: 0 auto; }
+
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 22px;
+  }
+
+  .eyebrow {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin: 0 0 6px;
+  }
+
+  h1 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 26px;
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+
+  .notify-btn {
+    background: transparent;
+    border: 1px solid var(--panel-border);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 9px 16px;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+  .notify-btn:hover { border-color: #3a4550; background: #171d23; }
+  .notify-btn:focus-visible { outline: 2px solid var(--warn); outline-offset: 2px; }
+  .notify-btn[data-on="true"] { border-color: var(--safe); color: var(--safe); }
+  .notify-btn[data-muted="true"] { border-color: var(--muted); color: var(--muted); opacity: 0.7; }
+
+  /* ---------------- Alarm Strip ---------------- */
+  .alarm-strip {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 18px 22px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 18px;
+    margin-bottom: 20px;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+  }
+  .alarm-strip[data-state="alarm"] {
+    border-color: var(--alarm);
+    box-shadow: 0 0 0 1px var(--alarm-glow), 0 0 28px var(--alarm-glow);
+    animation: pulse-alarm 1.4s ease-in-out infinite;
+  }
+  .alarm-strip[data-state="warning"] {
+    border-color: var(--warn);
+    box-shadow: 0 0 0 1px var(--warn-glow), 0 0 22px var(--warn-glow);
+  }
+  @keyframes pulse-alarm {
+    0%, 100% { box-shadow: 0 0 0 1px var(--alarm-glow), 0 0 28px var(--alarm-glow); }
+    50% { box-shadow: 0 0 0 1px var(--alarm-glow), 0 0 44px var(--alarm-glow); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .alarm-strip[data-state="alarm"] { animation: none; }
+  }
+
+  .status-block { display: flex; align-items: center; gap: 14px; }
+
+  .status-dot {
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--safe);
+    box-shadow: 0 0 10px var(--safe-glow);
+    flex-shrink: 0;
+  }
+  .status-dot[data-state="warning"] { background: var(--warn); box-shadow: 0 0 10px var(--warn-glow); }
+  .status-dot[data-state="alarm"] { background: var(--alarm); box-shadow: 0 0 12px var(--alarm-glow); }
+
+  .status-text .label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 2px;
+  }
+  .status-text .value {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600;
+    font-size: 18px;
+  }
+
+  .zones { display: flex; gap: 22px; }
+  .zone { text-align: center; cursor: pointer; }
+  .zone:focus-visible { outline: 2px solid var(--warn); outline-offset: 4px; border-radius: 8px; }
+  .zone-light {
+    width: 34px; height: 34px; border-radius: 50%;
+    background: #1a2129;
+    border: 2px solid #2b343d;
+    margin: 0 auto 6px;
+    transition: all 0.25s ease;
+  }
+  .zone-light[data-state="safe"] { background: var(--safe); border-color: var(--safe); box-shadow: 0 0 12px var(--safe-glow); }
+  .zone-light[data-state="warning"] { background: var(--warn); border-color: var(--warn); box-shadow: 0 0 12px var(--warn-glow); }
+  .zone-light[data-state="alarm"] { background: var(--alarm); border-color: var(--alarm); box-shadow: 0 0 14px var(--alarm-glow); }
+  .zone-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+  }
+
+  /* ---------------- Sensor Panels ---------------- */
+  .panels {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    margin-bottom: 20px;
+  }
+  @media (max-width: 720px) {
+    .panels { grid-template-columns: 1fr; }
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 20px 22px;
+    transition: border-color 0.3s ease;
+  }
+  .panel[data-state="alarm"] { border-color: var(--alarm); }
+  .panel[data-state="warning"] { border-color: var(--warn); }
+  .panel.flash-highlight { animation: flash-highlight 1s ease; }
+  @keyframes flash-highlight {
+    0% { box-shadow: 0 0 0 2px rgba(255,255,255,0.5); }
+    100% { box-shadow: 0 0 0 0 rgba(255,255,255,0); }
+  }
+
+  .panel-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+  .panel-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600;
+    font-size: 16px;
+  }
+  .chip {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 100px;
+    background: rgba(255,255,255,0.05);
+    color: var(--muted);
+    letter-spacing: 0.04em;
+  }
+  .chip[data-flame="true"] { background: rgba(255,61,61,0.15); color: var(--alarm); }
+  .chip[data-flame="false"] { background: rgba(47,214,115,0.12); color: var(--safe); }
+
+  .readouts { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; margin-bottom: 14px; }
+  .readout .label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .readout .value {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 22px;
+    font-weight: 500;
+  }
+  .readout .unit { font-size: 13px; color: var(--muted); margin-left: 3px; }
+
+  .mq2-bar-track {
+    height: 8px;
+    border-radius: 100px;
+    background: #1a2129;
+    position: relative;
+    overflow: hidden;
+    margin-top: 8px;
+  }
+  .mq2-bar-fill {
+    height: 100%;
+    border-radius: 100px;
+    background: var(--safe);
+    transition: width 0.4s ease, background 0.4s ease;
+  }
+  .mq2-bar-fill[data-state="warning"] { background: var(--warn); }
+  .mq2-bar-fill[data-state="alarm"] { background: var(--alarm); }
+  .mq2-threshold-mark {
+    position: absolute;
+    top: -3px;
+    width: 2px;
+    height: 14px;
+    background: var(--muted);
+    opacity: 0.6;
+  }
+
+  .meta-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 14px;
+    border-top: 1px solid var(--panel-border);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .gps-fix-dot {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--muted);
+    margin-right: 6px;
+  }
+  .gps-fix-dot[data-fix="true"] { background: var(--safe); }
+
+  .empty-state {
+    color: var(--muted);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    text-align: center;
+    padding: 30px 0;
+  }
+
+  /* ---------------- Event Log ---------------- */
+  .log-panel {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 18px 22px;
+  }
+  .log-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .log-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600;
+    font-size: 15px;
+  }
+  .log-list { max-height: 220px; overflow-y: auto; }
+  .log-entry {
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12.5px;
+    padding: 7px 0;
+    border-bottom: 1px solid #1a2129;
+  }
+  .log-entry:last-child { border-bottom: none; }
+  .log-time { color: var(--muted); flex-shrink: 0; }
+  .log-tag {
+    flex-shrink: 0;
+    padding: 1px 7px;
+    border-radius: 4px;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+  }
+  .log-tag[data-tag="alarm"] { background: rgba(255,61,61,0.15); color: var(--alarm); }
+  .log-tag[data-tag="warning"] { background: rgba(255,176,32,0.15); color: var(--warn); }
+  .log-tag[data-tag="clear"] { background: rgba(47,214,115,0.12); color: var(--safe); }
+  .log-empty { color: var(--muted); font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; padding: 6px 0; }
+
+  /* ---------------- History Charts ---------------- */
+  .history-section {
+    margin-bottom: 20px;
+  }
+  .section-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin: 0 0 10px;
+  }
+  .charts-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+  }
+  @media (max-width: 720px) {
+    .charts-grid { grid-template-columns: 1fr; }
+  }
+  .chart-card {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 18px 20px;
+  }
+  .chart-card-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    margin-bottom: 10px;
+  }
+  .chart-wrap { height: 180px; }
+  .chart-empty {
+    color: var(--muted);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    text-align: center;
+    padding: 60px 0;
+  }
+
+  footer {
+    margin-top: 22px;
+    text-align: center;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <p class="eyebrow">NodeMCU &bull; ESP-NOW &bull; Firebase RTDB</p>
+      <h1>Fire &amp; Gas Monitoring System</h1>
+    </div>
+    <div style="display:flex; gap:10px;">
+      <button class="notify-btn" id="notifyBtn">Enable alerts</button>
+      <button class="notify-btn" id="muteBtn" data-muted="false">Mute alarm sound</button>
+    </div>
+  </header>
+
+  <div class="alarm-strip" id="alarmStrip" data-state="safe">
+    <div class="status-block">
+      <div class="status-dot" id="statusDot" data-state="safe"></div>
+      <div class="status-text">
+        <div class="label">System Status</div>
+        <div class="value" id="statusValue">Normal</div>
+      </div>
+    </div>
+    <div class="zones">
+      <div class="zone" id="zoneNav1" tabindex="0" role="button" aria-label="Jump to Zone 01 sensor panel">
+        <div class="zone-light" id="zoneLight1" data-state="safe"></div>
+        <div class="zone-label">ZONE 01</div>
+      </div>
+      <div class="zone" id="zoneNav2" tabindex="0" role="button" aria-label="Jump to Zone 02 sensor panel">
+        <div class="zone-light" id="zoneLight2" data-state="safe"></div>
+        <div class="zone-label">ZONE 02</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panels" id="panels">
+    <div class="panel" id="panel1" data-state="safe">
+      <div class="panel-head">
+        <div class="panel-title">Zone 01 &middot; Sender 1</div>
+        <div class="chip" id="flameChip1" data-flame="false">NO FLAME</div>
+      </div>
+      <div id="panelBody1">
+        <div class="empty-state">Waiting for data from Sender 1&hellip;</div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel2" data-state="safe">
+      <div class="panel-head">
+        <div class="panel-title">Zone 02 &middot; Sender 2</div>
+        <div class="chip" id="flameChip2" data-flame="false">NO FLAME</div>
+      </div>
+      <div id="panelBody2">
+        <div class="empty-state">Waiting for data from Sender 2&hellip;</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="history-section">
+    <p class="section-label">Sensor History</p>
+    <div class="charts-grid">
+      <div class="chart-card">
+        <div class="chart-card-title">Zone 01 &middot; Sender 1</div>
+        <div class="chart-wrap"><canvas id="chart1"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">Zone 02 &middot; Sender 2</div>
+        <div class="chart-wrap"><canvas id="chart2"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="log-panel">
+    <div class="log-head">
+      <div class="log-title">Alert History</div>
+    </div>
+    <div class="log-list" id="logList">
+      <div class="log-empty">Loading alert history&hellip;</div>
+    </div>
+  </div>
+
+  <footer>
+    Source: nodemcu-2cf24-default-rtdb.firebaseio.com &nbsp;&middot;&nbsp; MQ2 alert threshold: 400
+  </footer>
+
+</div>
+
+<script>
+const FIREBASE_URL = "https://nodemcu-2cf24-default-rtdb.firebaseio.com";
+const MQ2_THRESHOLD = 400;
+
+const state = { sender1: null, sender2: null };
+const lastReceived = { sender1: null, sender2: null };
+
+let notificationsEnabled = false;
+
+function computeZoneState(data) {
+  if (!data) return "safe";
+  if (data.flame === true) return "alarm";
+  if (typeof data.mq2 === "number" && data.mq2 > MQ2_THRESHOLD) return "warning";
+  return "safe";
+}
+
+function stateLabel(s) {
+  if (s === "alarm") return "FIRE ALARM";
+  if (s === "warning") return "GAS WARNING";
+  return "Normal";
+}
+
+// ---------------- Alarm Siren (synthesized, no audio file needed) ----------------
+let audioCtx = null;
+let sirenOsc = null;
+let sirenLfo = null;
+let sirenGain = null;
+let sirenActive = false;
+let alarmMuted = false;
+
+function ensureAudioContext() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === "suspended") {
+    audioCtx.resume();
+  }
+}
+
+function startSiren() {
+  if (sirenActive || alarmMuted || !audioCtx) return;
+
+  sirenOsc = audioCtx.createOscillator();
+  sirenOsc.type = "sine";
+  sirenOsc.frequency.value = 750;
+
+  sirenLfo = audioCtx.createOscillator();
+  sirenLfo.type = "sine";
+  sirenLfo.frequency.value = 0.6; // wail speed (cycles per second)
+
+  const lfoGain = audioCtx.createGain();
+  lfoGain.gain.value = 220; // pitch sweep depth in Hz
+  sirenLfo.connect(lfoGain);
+  lfoGain.connect(sirenOsc.frequency);
+
+  sirenGain = audioCtx.createGain();
+  sirenGain.gain.value = 0.12; // volume, kept moderate
+
+  sirenOsc.connect(sirenGain);
+  sirenGain.connect(audioCtx.destination);
+
+  sirenOsc.start();
+  sirenLfo.start();
+  sirenActive = true;
+}
+
+function stopSiren() {
+  if (!sirenActive) return;
+  try {
+    sirenOsc.stop();
+    sirenLfo.stop();
+  } catch (e) { /* already stopped */ }
+  sirenOsc.disconnect();
+  sirenLfo.disconnect();
+  sirenGain.disconnect();
+  sirenActive = false;
+}
+
+function formatTime(d) {
+  return d.toLocaleTimeString([], { hour12: false });
+}
+
+function maybeNotify(title, body) {
+  if (notificationsEnabled && "Notification" in window && Notification.permission === "granted") {
+    new Notification(title, { body });
+  }
+}
+
+function renderPanel(senderKey, panelIndex) {
+  const data = state[senderKey];
+  const zoneName = `Sender ${panelIndex}`;
+  const panelEl = document.getElementById(`panel${panelIndex}`);
+  const bodyEl = document.getElementById(`panelBody${panelIndex}`);
+  const chipEl = document.getElementById(`flameChip${panelIndex}`);
+  const zoneLightEl = document.getElementById(`zoneLight${panelIndex}`);
+
+  if (!data) {
+    bodyEl.innerHTML = `<div class="empty-state">Waiting for data from ${zoneName}&hellip;</div>`;
+    return;
+  }
+
+  const zState = computeZoneState(data);
+
+  panelEl.dataset.state = zState;
+  zoneLightEl.dataset.state = zState;
+  chipEl.dataset.flame = data.flame === true ? "true" : "false";
+  chipEl.textContent = data.flame === true ? "FLAME DETECTED" : "NO FLAME";
+
+  const mq2Pct = Math.min(100, Math.max(0, (data.mq2 / 1024) * 100));
+  const thresholdPct = (MQ2_THRESHOLD / 1024) * 100;
+
+  const tempDisplay = (data.temp === -1) ? "&mdash;" : data.temp.toFixed(1);
+  const humDisplay = (data.hum === -1) ? "&mdash;" : data.hum.toFixed(1);
+
+  bodyEl.innerHTML = `
+    <div class="readouts">
+      <div class="readout">
+        <div class="label">Temperature</div>
+        <div class="value">${tempDisplay}<span class="unit">&deg;C</span></div>
+      </div>
+      <div class="readout">
+        <div class="label">Humidity</div>
+        <div class="value">${humDisplay}<span class="unit">%</span></div>
+      </div>
+      <div class="readout" style="grid-column: 1 / -1;">
+        <div class="label">MQ2 Gas / Smoke Level</div>
+        <div class="value">${data.mq2}<span class="unit">/ 1024</span></div>
+        <div class="mq2-bar-track">
+          <div class="mq2-bar-fill" data-state="${zState === 'alarm' ? 'safe' : zState}" style="width:${mq2Pct}%;"></div>
+          <div class="mq2-threshold-mark" style="left:${thresholdPct}%;"></div>
+        </div>
+      </div>
+    </div>
+    <div class="meta-row">
+      <span><span class="gps-fix-dot" data-fix="${data.gpsFix === true}"></span>${data.lat?.toFixed(4)}&deg;, ${data.lng?.toFixed(4)}&deg; ${data.gpsFix ? "(live fix)" : "(fallback)"}</span>
+      <span>Last update: ${lastReceived[senderKey] ? formatTime(lastReceived[senderKey]) : "—"}</span>
+    </div>
+  `;
+}
+
+function renderGlobalStatus() {
+  const zStates = [computeZoneState(state.sender1), computeZoneState(state.sender2)];
+  let overall = "safe";
+  if (zStates.includes("alarm")) overall = "alarm";
+  else if (zStates.includes("warning")) overall = "warning";
+
+  document.getElementById("alarmStrip").dataset.state = overall;
+  document.getElementById("statusDot").dataset.state = overall;
+  document.getElementById("statusValue").textContent = stateLabel(overall);
+
+  if (overall === "alarm") {
+    startSiren();
+  } else {
+    stopSiren();
+  }
+}
+
+function render() {
+  renderPanel("sender1", 1);
+  renderPanel("sender2", 2);
+  renderGlobalStatus();
+}
+
+// ---------------- Alert History (persistent, from Firebase) ----------------
+const seenAlertIds = new Set();
+let notifiedOnce = false; // avoid notifying for the entire backlog on first load
+
+function renderAlertEntry(id, record, isBacklog) {
+  if (seenAlertIds.has(id)) return;
+  seenAlertIds.add(id);
+
+  const logList = document.getElementById("logList");
+  const empty = logList.querySelector(".log-empty");
+  if (empty) empty.remove();
+
+  const ts = record.timestamp ? new Date(record.timestamp) : new Date();
+  const zoneName = `Sender ${record.sender}`;
+  const tag = record.type || "clear";
+
+  const entry = document.createElement("div");
+  entry.className = "log-entry";
+  entry.dataset.id = id;
+  entry.innerHTML = `
+    <span class="log-time">${ts.toLocaleString([], { hour12: false })}</span>
+    <span class="log-tag" data-tag="${tag}">${tag.toUpperCase()}</span>
+    <span>${zoneName}: ${record.message || ""}</span>
+  `;
+  logList.prepend(entry);
+
+  while (logList.children.length > 100) {
+    logList.removeChild(logList.lastChild);
+  }
+
+  if (!isBacklog) {
+    if (tag === "alarm") {
+      maybeNotify(`🔥 Fire Alarm — ${zoneName}`, "Flame sensor triggered. Check the dashboard immediately.");
+    } else if (tag === "warning") {
+      maybeNotify(`⚠️ Gas Warning — ${zoneName}`, record.message || "");
+    }
+  }
+}
+
+function connectAlertHistory() {
+  const es = new EventSource(`${FIREBASE_URL}/alert_history.json`);
+
+  es.addEventListener("put", (e) => {
+    try {
+      const payload = JSON.parse(e.data);
+      if (payload.path === "/" && payload.data) {
+        // Initial backlog snapshot: render oldest to newest
+        const entries = Object.entries(payload.data).sort((a, b) => a[0].localeCompare(b[0]));
+        entries.forEach(([id, record]) => renderAlertEntry(id, record, true));
+        notifiedOnce = true;
+      } else if (payload.path !== "/" && payload.data) {
+        const id = payload.path.replace("/", "");
+        renderAlertEntry(id, payload.data, !notifiedOnce);
+      }
+    } catch (err) {
+      console.error("Failed to parse alert_history event:", err);
+    }
+  });
+
+  es.onerror = () => {
+    console.warn("Alert history stream connection issue, browser will auto-retry.");
+  };
+}
+
+// ---------------- Sensor History Charts ----------------
+const MAX_CHART_POINTS = 60;
+const charts = {};
+
+function createChart(canvasId) {
+  const ctx = document.getElementById(canvasId).getContext("2d");
+  return new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: [],
+      datasets: [
+        {
+          label: "Temp (°C)",
+          data: [],
+          borderColor: "#FFB020",
+          backgroundColor: "transparent",
+          yAxisID: "yTemp",
+          tension: 0.3,
+          pointRadius: 0,
+        },
+        {
+          label: "Humidity (%)",
+          data: [],
+          borderColor: "#2FD673",
+          backgroundColor: "transparent",
+          yAxisID: "yTemp",
+          tension: 0.3,
+          pointRadius: 0,
+        },
+        {
+          label: "MQ2",
+          data: [],
+          borderColor: "#FF3D3D",
+          backgroundColor: "transparent",
+          yAxisID: "yMq2",
+          tension: 0.3,
+          pointRadius: 0,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: {
+          labels: { color: "#E7ECEF", font: { family: "IBM Plex Mono", size: 10 }, boxWidth: 10 },
+        },
+      },
+      scales: {
+        x: { ticks: { color: "#6E7A85", font: { size: 9 }, maxTicksLimit: 6 }, grid: { color: "#1a2129" } },
+        yTemp: { position: "left", ticks: { color: "#6E7A85", font: { size: 9 } }, grid: { color: "#1a2129" } },
+        yMq2: { position: "right", ticks: { color: "#6E7A85", font: { size: 9 } }, grid: { display: false } },
+      },
+    },
+  });
+}
+
+function pushChartPoint(chart, record) {
+  const label = record.timestamp
+    ? new Date(record.timestamp).toLocaleTimeString([], { hour12: false })
+    : "";
+  chart.data.labels.push(label);
+  chart.data.datasets[0].data.push(record.temp === -1 ? null : record.temp);
+  chart.data.datasets[1].data.push(record.hum === -1 ? null : record.hum);
+  chart.data.datasets[2].data.push(record.mq2);
+
+  if (chart.data.labels.length > MAX_CHART_POINTS) {
+    chart.data.labels.shift();
+    chart.data.datasets.forEach((d) => d.data.shift());
+  }
+  chart.update("none");
+}
+
+function connectSensorHistory(senderNum) {
+  const chartId = `chart${senderNum}`;
+  charts[chartId] = createChart(chartId);
+
+  const es = new EventSource(`${FIREBASE_URL}/sensor_history/sender${senderNum}.json`);
+
+  es.addEventListener("put", (e) => {
+    try {
+      const payload = JSON.parse(e.data);
+      if (payload.path === "/" && payload.data) {
+        const entries = Object.entries(payload.data).sort((a, b) => a[0].localeCompare(b[0]));
+        entries.forEach(([, record]) => pushChartPoint(charts[chartId], record));
+      } else if (payload.path !== "/" && payload.data) {
+        pushChartPoint(charts[chartId], payload.data);
+      }
+    } catch (err) {
+      console.error(`Failed to parse sensor_history event for sender${senderNum}:`, err);
+    }
+  });
+
+  es.onerror = () => {
+    console.warn(`Sensor history stream (sender${senderNum}) connection issue, browser will auto-retry.`);
+  };
+}
+
+// ---------------- Firebase Realtime Streaming (SSE) ----------------
+function connect() {
+  const es = new EventSource(`${FIREBASE_URL}/sensor_data.json`);
+
+  es.addEventListener("put", (e) => {
+    try {
+      const payload = JSON.parse(e.data);
+      applyUpdate(payload.path, payload.data);
+    } catch (err) {
+      console.error("Failed to parse Firebase event:", err);
+    }
+  });
+
+  es.addEventListener("patch", (e) => {
+    try {
+      const payload = JSON.parse(e.data);
+      applyUpdate(payload.path, payload.data);
+    } catch (err) {
+      console.error("Failed to parse Firebase patch event:", err);
+    }
+  });
+
+  es.onerror = () => {
+    console.warn("Firebase stream connection issue, browser will auto-retry.");
+  };
+}
+
+function applyUpdate(path, data) {
+  // path is "/" on initial full snapshot, or "/sender1", "/sender2" on updates
+  if (path === "/" && data) {
+    if (data.sender1) { state.sender1 = data.sender1; lastReceived.sender1 = new Date(); }
+    if (data.sender2) { state.sender2 = data.sender2; lastReceived.sender2 = new Date(); }
+  } else if (path === "/sender1") {
+    state.sender1 = data;
+    lastReceived.sender1 = new Date();
+  } else if (path === "/sender2") {
+    state.sender2 = data;
+    lastReceived.sender2 = new Date();
+  }
+  render();
+}
+
+// ---------------- Notifications + audio unlock ----------------
+document.getElementById("notifyBtn").addEventListener("click", async () => {
+  ensureAudioContext(); // must happen inside a real user click to satisfy browser autoplay policy
+
+  if (!("Notification" in window)) {
+    alert("This browser does not support desktop notifications. Alarm sound is still enabled.");
+    return;
+  }
+  const permission = await Notification.requestPermission();
+  if (permission === "granted") {
+    notificationsEnabled = true;
+  }
+  const btn = document.getElementById("notifyBtn");
+  btn.textContent = "Alerts enabled";
+  btn.dataset.on = "true";
+});
+
+document.getElementById("muteBtn").addEventListener("click", () => {
+  alarmMuted = !alarmMuted;
+  const btn = document.getElementById("muteBtn");
+  btn.dataset.muted = alarmMuted ? "true" : "false";
+  btn.textContent = alarmMuted ? "Alarm sound muted" : "Mute alarm sound";
+  if (alarmMuted) stopSiren();
+});
+
+// ---------------- Zone navigation (click to jump to panel) ----------------
+function jumpToPanel(panelId) {
+  const panel = document.getElementById(panelId);
+  panel.scrollIntoView({ behavior: "smooth", block: "center" });
+  panel.classList.remove("flash-highlight");
+  // force reflow so the animation can restart if clicked again
+  void panel.offsetWidth;
+  panel.classList.add("flash-highlight");
+}
+
+function setupZoneNav(navId, panelId) {
+  const el = document.getElementById(navId);
+  el.addEventListener("click", () => jumpToPanel(panelId));
+  el.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      jumpToPanel(panelId);
+    }
+  });
+}
+
+setupZoneNav("zoneNav1", "panel1");
+setupZoneNav("zoneNav2", "panel2");
+
+connect();
+connectAlertHistory();
+connectSensorHistory(1);
+connectSensorHistory(2);
+render();
+</script>
+</body>
+</html>
