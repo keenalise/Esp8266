@@ -146,13 +146,21 @@ void readAndSendSensorData() {
   dataPacket.flameDetected = (flameRaw == LOW);
 
   // ---- GPS ----
+  // If the GPS module hasn't acquired a fix yet (e.g. indoors, or still
+  // acquiring satellites), fall back to a known reference location instead
+  // of sending 0.0, 0.0 (which would incorrectly plot as a point in the
+  // ocean off the coast of Africa). gpsFix stays false either way, so the
+  // receiver/Raspberry Pi can still tell this is a fallback, not a live fix.
+  const float FALLBACK_LATITUDE  = 27.7061;  // 27.7061° N
+  const float FALLBACK_LONGITUDE = 85.3300;  // 85.3300° E
+
   if (gps.location.isValid()) {
     dataPacket.latitude  = gps.location.lat();
     dataPacket.longitude = gps.location.lng();
     dataPacket.gpsFix    = true;
   } else {
-    dataPacket.latitude  = 0.0;
-    dataPacket.longitude = 0.0;
+    dataPacket.latitude  = FALLBACK_LATITUDE;
+    dataPacket.longitude = FALLBACK_LONGITUDE;
     dataPacket.gpsFix    = false;
   }
 
@@ -170,7 +178,8 @@ void readAndSendSensorData() {
     Serial.print("Latitude    : "); Serial.println(dataPacket.latitude, 6);
     Serial.print("Longitude   : "); Serial.println(dataPacket.longitude, 6);
   } else {
-    Serial.println("GPS         : No fix yet");
+    Serial.print("Latitude    : "); Serial.print(dataPacket.latitude, 6); Serial.println(" (.)");
+    Serial.print("Longitude   : "); Serial.print(dataPacket.longitude, 6); Serial.println(" (.)");
   }
   Serial.println(result == 0 ? "Send status : OK" : "Send status : ERROR");
   Serial.println("-----------------------------------");
