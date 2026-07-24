@@ -1,0 +1,14 @@
+[Unit]
+Description=Firebase Sensor Data Uploader
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /home/raspberrypi/firebase_uploader.py
+WorkingDirectory=/home/raspberrypi
+StandardOutput=journal
+StandardError=journal
+Restart=always
+User=raspberrypi
+
+[Install]
+WantedBy=multi-user.target
