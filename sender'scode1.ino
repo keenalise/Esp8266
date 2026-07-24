@@ -3,10 +3,10 @@
   SENDER NODE MCU CODE - Multi-Sensor ESP-NOW Transmitter
   ============================================================
   Project   : Fire Detection and Environmental Monitoring System
-  Board     : NodeMCU ESP8266 (Sender 2)
+  Board     : NodeMCU ESP8266 (Sender 1)
   Protocol  : ESP-NOW (sends to Receiver NodeMCU)
 
-  SENDER_ID is set to 2 for this board.
+  SENDER_ID is set to 1 for this board.
   Receiver MAC Address used below: 50:02:91:e1:4a:44
 
   Required libraries (install via Library Manager):
@@ -23,7 +23,7 @@
 #include <TinyGPS++.h>
 
 // ---------- CHANGE THIS FOR EACH SENDER BOARD ----------
-#define SENDER_ID 2   // Use 1 for Sender-1, 2 for Sender-2
+#define SENDER_ID 1   // Use 1 for Sender-1, 2 for Sender-2
 // --------------------------------------------------------
 
 // ---------------- Pin Definitions (as wired) ----------------
@@ -178,7 +178,8 @@ void readAndSendSensorData() {
     Serial.print("Latitude    : "); Serial.println(dataPacket.latitude, 6);
     Serial.print("Longitude   : "); Serial.println(dataPacket.longitude, 6);
   } else {
-    Serial.println("GPS         : No fix yet");
+    Serial.print("Latitude    : "); Serial.print(dataPacket.latitude, 6); Serial.println(" (,)");
+    Serial.print("Longitude   : "); Serial.print(dataPacket.longitude, 6); Serial.println(" (,)");
   }
   Serial.println(result == 0 ? "Send status : OK" : "Send status : ERROR");
   Serial.println("-----------------------------------");
